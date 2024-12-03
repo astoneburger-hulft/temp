@@ -1,0 +1,122 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+############## ENUMS #####################
+
+enum ConversationStatus {
+  NEW
+  PENDING
+  PROCESSING
+  COMPLETE
+  ERROR
+}
+
+############## INPUTS #####################
+
+input GetConversationInput {
+  conversationId: ID!
+}
+
+input DeleteConversationInput {
+  conversationId: ID!
+}
+
+input MessageInput {
+  sender: String!
+  message: String!
+}
+
+input CreateMessageInput {
+  conversationId: ID!
+  prompt: ID!
+}
+
+input SystemSendMessageChunkInput {
+  userId: ID!
+  conversationId: ID!
+  status: ConversationStatus!
+
+  chunkType: String!
+  chunk: String!
+}
+
+input RecieveMessageChunkAsyncInput {
+  conversationId: ID!
+}
+
+############## TYPES #####################
+
+type MessageChunk @aws_cognito_user_pools @aws_iam {
+  userId: ID!
+  conversationId: ID!
+  status: ConversationStatus!
+
+  chunkType: String!
+  chunk: String!
+}
+
+type Message @aws_cognito_user_pools @aws_iam {
+  sender: String!
+  message: String!
+  createdAt: String!
+}
+
+type Conversation @aws_cognito_user_pools @aws_iam {
+  conversationId: ID!
+  userId: ID!
+  messages: [Message!]
+  status: ConversationStatus!
+  createdAt: String!
+}
+
+############## PAYLOADS #####################
+
+type CreateConversationPayload @aws_cognito_user_pools @aws_iam {
+  conversation: Conversation
+}
+
+type CreateMessagePayload @aws_cognito_user_pools @aws_iam {
+  message: Message
+}
+
+type DeleteConversationPayload @aws_cognito_user_pools @aws_iam {
+  conversation: Conversation
+}
+
+############## QUERIES #####################
+
+type Query @aws_cognito_user_pools @aws_iam {
+  getConversation(input: GetConversationInput!): Conversation
+  getAllConversations: [Conversation!]
+}
+
+############## MUTATIONS #####################
+
+type Mutation {
+  # Creation
+  createConversation: CreateConversationPayload
+    @aws_cognito_user_pools
+    @aws_iam
+  createMessageAsync(input: CreateMessageInput!): CreateMessagePayload
+    @aws_cognito_user_pools
+
+  # Deletion
+  deleteConversation(input: DeleteConversationInput!): DeleteConversationPayload
+    @aws_cognito_user_pools
+    @aws_iam
+
+  # System
+  systemSendMessageChunk(input: SystemSendMessageChunkInput!): MessageChunk
+    @aws_iam
+}
+
+############## SUBSCRIPTIONS #####################
+
+type Subscription {
+  recieveMessageChunkAsync(input: RecieveMessageChunkAsyncInput!): MessageChunk
+    @aws_subscribe(mutations: ["systemSendMessageChunk"])
+    @aws_cognito_user_pools
+}
