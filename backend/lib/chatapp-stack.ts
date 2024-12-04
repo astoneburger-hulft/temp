@@ -164,11 +164,47 @@ export class ChatappStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
     });
 
-    // <-------------- REPLACE CODE BEGIN --------------> //
-    // Predict Async Lambda
-    const predictAsyncLambda = new NodejsFunction(this, 'PredictAsync', {
-    });
-    // <-------------- REPLACE CODE END --------------> //
+ // Predict Async Lambda
+ const predictAsyncLambda = new NodejsFunction(this, 'PredictAsync', {
+  runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+  entry: path.join(__dirname, '../lambdas/predict/index.ts'),
+  environment: {
+    GRAPHQL_URL: api.graphqlUrl,
+    TABLE_NAME: table.tableName
+  },
+  bundling: {
+    nodeModules: ['langchain'],
+    minify: true,
+    sourceMap: true
+  },
+  memorySize: 756,
+  timeout: cdk.Duration.seconds(60),
+  role: new iam.Role(this, 'PredictAsyncRole', {
+    assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+    managedPolicies: [
+      iam.ManagedPolicy.fromAwsManagedPolicyName(
+        'service-role/AWSLambdaBasicExecutionRole'
+      )
+    ]
+  }),
+  initialPolicy: [
+    // Allow the lambda to call AppSync
+    new iam.PolicyStatement({
+      resources: [`${api.arn}/*`],
+      actions: ['appsync:GraphQL']
+    }),
+
+    // Allow the lambda to use Bedrock:InvokeModel
+    // so we can call the model endpoint.
+    new iam.PolicyStatement({
+      resources: ['*'],
+      actions: [
+        'bedrock:InvokeModel*'
+      ]
+    }),
+  ],
+  tracing: Tracing.ACTIVE
+});
 
     // Grant read/write data access to the DynamoDB table for the Lambda
     table.grantReadWriteData(predictAsyncLambda);
@@ -226,14 +262,31 @@ export class ChatappStack extends cdk.Stack {
       });
     };
 
-    // <-------------- REPLACE CODE BEGIN --------------> //
+
     const createLambdaFunction = (
       name: string,
       dataSource: cdk.aws_appsync.DynamoDbDataSource | appsync.LambdaDataSource,
       isAsync: boolean = false
     ) => {
+      let props: any = {
+        name,
+        api: api,
+        dataSource
+      };
+      if (isAsync) {
+        props.requestMappingTemplate = appsync.MappingTemplate.fromString(`
+          {
+            "version": "2018-05-29",
+            "operation": "Invoke",
+            "payload": $util.toJson($context),
+            "invocationType": "Event"
+          }
+        `);
+        props.responseMappingTemplate = appsync.MappingTemplate.fromString('$util.toJson($context.result)');
+      }
+      return new appsync.AppsyncFunction(this, name, props);
     };
-    // <-------------- REPLACE CODE END --------------> //
+
 
     
     // Conversations
